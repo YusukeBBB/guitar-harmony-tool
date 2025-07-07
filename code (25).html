@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🎸ギターソロ ハモリ支援ツール v3.7 (最終・決定版)</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.7.77/Tone.js"></script>
+    <style>
+        :root { --fret-width: 60px; --string-height: 40px; --note-size: 30px; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #1e1e1e; color: #d4d4d4; display: flex; flex-direction: column; align-items: center; padding: 20px; margin: 0; }
+        .container { width: 100%; max-width: 1600px; display: flex; flex-direction: column; gap: 20px; }
+        .controls { background-color: #2a2a2a; padding: 15px; border-radius: 8px; display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; align-items: center; }
+        .control-group { display: flex; flex-direction: column; gap: 5px; }
+        .control-group label { font-size: 0.9em; color: #a0a0a0; }
+        .control-group label input { vertical-align: middle; }
+        select, input[type="number"] { background-color: #3c3c3c; color: #d4d4d4; border: 1px solid #555; padding: 8px; border-radius: 4px; width: 100%; }
+        .board-section h2 { margin-top: 20px; margin-bottom: 10px; font-size: 1.2em; color: #00aaff; }
+        .board-section h2.harmony-title { color: #ffb74d; }
+        .fretboard-container-wrapper { width: 100%; overflow-x: auto; border: 1px solid #444; border-radius: 8px; background-color: #252526; padding: 20px 10px; }
+        .fretboard-wrapper { position: relative; display: inline-block; }
+        .fretboard-grid { display: grid; grid-template-columns: 40px repeat(25, var(--fret-width)); gap: 0; background: #332f2c; }
+        .string-label-cell, .fret-number-cell { display: flex; justify-content: center; align-items: center; font-size: 0.9em; color: #aaa; background-color: #252526; }
+        .fret-cell { height: var(--string-height); position: relative; display: flex; justify-content: center; align-items: center; border-right: 2px solid #aaa; box-sizing: border-box; }
+        #original-board .fret-cell, #harmony-board .note-marker { cursor: pointer; }
+        #original-board .fret-cell:hover { background-color: rgba(255, 255, 255, 0.05); }
+        .string-row { background-image: linear-gradient(#777, #777); background-repeat: no-repeat; background-position: center; }
+        .s1 { background-size: 100% 1px; } .s2 { background-size: 100% 1.5px; } .s3 { background-size: 100% 2px; } .s4 { background-size: 100% 2.5px; } .s5 { background-size: 100% 3px; } .s6 { background-size: 100% 3.5px; }
+        .fret-cell.nut { border-left: 5px solid #ccc; }
+        .inlay-dot::after, .inlay-dot-double::before, .inlay-dot-double::after { content: ''; position: absolute; width: 10px; height: 10px; background-color: #9c8c7c; border: 1px solid #555; border-radius: 50%; left: 50%; z-index: 1; transform: translateX(-50%); }
+        .inlay-dot::after { top: 50%; transform: translate(-50%, -50%); }
+        .inlay-dot-double::before { top: calc(var(--string-height) * 0.25); }
+        .inlay-dot-double::after { bottom: calc(var(--string-height) * 0.25); }
+        .note-name-display { position: absolute; font-size: 0.8em; color: #ccc; background: rgba(0,0,0,0.5); padding: 1px 3px; border-radius: 3px; pointer-events: none; opacity: 0; transition: opacity 0.2s; }
+        .show-notes-active .note-name-display { opacity: 1; }
+        .note-marker { position: absolute; width: var(--note-size); height: var(--note-size); border-radius: 50%; z-index: 10; display: flex; justify-content: center; align-items: center; font-weight: bold; font-size: 0.9em; color: #111; box-shadow: 0 2px 5px rgba(0,0,0,0.4); }
+        .original-note { background-color: #4fc3f7; border: 1px solid #fff; pointer-events: none; }
+        .harmony-note { background-color: #ffb74d; border: 1px solid #fff; }
+        .harmony-note:hover { transform: scale(1.1); box-shadow: 0 0 10px #ffb74d; }
+        .actions { display: flex; gap: 10px; flex-wrap: wrap; }
+        button { background-color: #007acc; color: white; border: none; padding: 10px 15px; border-radius: 4px; cursor: pointer; font-size: 1em; transition: background-color 0.2s; }
+        button:hover { background-color: #005a9e; }
+        button:disabled { background-color: #555; cursor: not-allowed; }
+        #tab-output-container { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.7); display: none; justify-content: center; align-items: center; z-index: 1000; }
+        #tab-output { background-color: #1e1e1e; padding: 30px; border-radius: 8px; width: 80%; max-width: 600px; max-height: 80vh; overflow-y: auto; border: 1px solid #555; position: relative; }
+        #tab-output pre { white-space: pre-wrap; word-wrap: break-word; color: #d4d4d4; font-family: 'Courier New', Courier, monospace; font-size: 1.1em; margin: 0; }
+        .close-button { position: absolute; top: 10px; right: 15px; font-size: 2em; color: #fff; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎸 ギターソロ ハモリ支援ツール v3.7 (最終・決定版)</h1>
+        <div class="controls">
+            <div class="control-group"><label for="key-select">キー</label><select id="key-select"></select></div>
+            <div class="control-group"><label for="scale-select">スケール</label><select id="scale-select"><option value="major">Major</option><option value="minor">Natural Minor</option></select></div>
+            <div class="control-group"><label for="interval-select">インターバル</label><select id="interval-select"></select></div>
+            <div class="control-group"><label for="harmony-type-select">ハモリ方式</label><select id="harmony-type-select"><option value="diatonic">ダイアトニック</option><option value="chromatic">固定 (クロマチック)</option></select></div>
+            <div class="control-group"><label for="fret-min">ポジション制限 (Fret)</label><div><input type="number" id="fret-min" value="0" min="0" max="23"> - <input type="number" id="fret-max" value="24" min="1" max="24"></div></div>
+            <div class="control-group"><label><input type="checkbox" id="show-all-notes-toggle"> 指板上のすべての音名を表示</label></div>
+        </div>
+        <div id="fretboards-area">
+            <div class="board-section"><h2>元フレーズ (Original)</h2><div class="fretboard-container-wrapper"><div id="original-board" class="fretboard-wrapper"><div class="fretboard-grid"></div></div></div></div>
+            <div class="board-section"><h2 class="harmony-title">ハモリパート (Harmony) - クリックで別ポジションを試せます</h2><div class="fretboard-container-wrapper"><div id="harmony-board" class="fretboard-wrapper"><div class="fretboard-grid"></div></div></div></div>
+        </div>
+        <div class="actions">
+            <button id="play-original">元音源を再生</button><button id="play-harmony">ハモリを再生</button><button id="play-both">両方を再生</button>
+            <button id="show-tab">結果を見る</button><button id="undo">一つ戻る</button><button id="clear-all">すべてクリア</button>
+        </div>
+    </div>
+    <div id="tab-output-container">
+        <div id="tab-output"><span class="close-button" onclick="document.getElementById('tab-output-container').style.display='none'">&times;</span><pre id="tab-content"></pre></div>
+    </div>
+
+    <script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const NOTES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+        const TUNING = ['E4', 'B3', 'G3', 'D3', 'A2', 'E2'];
+        const NUM_FRETS = 24;
+        const SCALES = { major: { intervals: [0, 2, 4, 5, 7, 9, 11] }, minor: { intervals: [0, 2, 3, 5, 7, 8, 10] }};
+
+        let userPhrase = [];
+        let synth;
+
+        const originalBoard = document.getElementById('original-board').querySelector('.fretboard-grid');
+        const harmonyBoard = document.getElementById('harmony-board').querySelector('.fretboard-grid');
+        const keySelect = document.getElementById('key-select'), scaleSelect = document.getElementById('scale-select'), intervalSelect = document.getElementById('interval-select'), harmonyTypeSelect = document.getElementById('harmony-type-select');
+        const fretMinInput = document.getElementById('fret-min'), fretMaxInput = document.getElementById('fret-max');
+        const showNotesToggle = document.getElementById('show-all-notes-toggle');
+        
+        function init() {
+            try { synth = new Tone.PolySynth(Tone.Synth, { oscillator: { type: 'fatsawtooth' }, envelope: { attack: 0.01, decay: 0.2, sustain: 0.2, release: 0.5 }}).toDestination(); }
+            catch (e) { console.error("Tone.jsの初期化に失敗しました。", e); }
+            populateControls();
+            createFretboard(originalBoard);
+            createFretboard(harmonyBoard);
+            addEventListeners();
+            updateUI();
+        }
+
+        function populateControls() {
+            NOTES.forEach(note => keySelect.add(new Option(note, note)));
+            keySelect.value = 'C';
+            const intervals = [ { v: 2, n: '2度上' }, { v: 3, n: '3度上' }, { v: 4, n: '4度上' }, { v: 5, n: '5度上' }, { v: 6, n: '6度上' }, { v: 7, n: '7度上' }, { v: -2, n: '2度下' }, { v: -3, n: '3度下' }, { v: -4, n: '4度下' }, { v: -5, n: '5度下' }, { v: -6, n: '6度下' }];
+            intervals.forEach(iv => intervalSelect.add(new Option(iv.n, iv.v)));
+            intervalSelect.value = 3;
+        }
+
+        function createFretboard(gridElement) {
+            gridElement.innerHTML = '';
+            for (let i = 0; i < 6; i++) {
+                gridElement.appendChild(Object.assign(document.createElement('div'), { className: 'string-label-cell', textContent: `${i + 1}弦` }));
+                for (let j = 0; j <= NUM_FRETS; j++) {
+                    const fretCell = Object.assign(document.createElement('div'), { className: 'fret-cell string-row' });
+                    fretCell.classList.add(`s${i + 1}`);
+                    if (j === 0) fretCell.classList.add('nut');
+                    fretCell.dataset.string = i; fretCell.dataset.fret = j;
+                    const noteNameDisplay = Object.assign(document.createElement('span'), { className: 'note-name-display', textContent: getNoteOnFretboard(i, j).slice(0, -1) });
+                    fretCell.appendChild(noteNameDisplay);
+                    if (i === 2 && [3, 5, 7, 9, 15, 17, 19, 21].includes(j)) fretCell.classList.add('inlay-dot');
+                    if ((i === 1 || i === 3) && [12, 24].includes(j)) fretCell.classList.add('inlay-dot-double');
+                    gridElement.appendChild(fretCell);
+                }
+            }
+            gridElement.appendChild(document.createElement('div'));
+            for (let j = 0; j <= NUM_FRETS; j++) { gridElement.appendChild(Object.assign(document.createElement('div'), { className: 'fret-number-cell', textContent: [0, 3, 5, 7, 9, 12, 15, 17, 19, 21, 24].includes(j) ? j : '' })); }
+        }
+        
+        function noteToMidi(note) { const p = note.slice(0, -1); const o = parseInt(note.slice(-1)); return NOTES.indexOf(p) + (o + 1) * 12; }
+        function midiToNote(midi) { const i = midi % 12; const o = Math.floor(midi / 12) - 1; return NOTES[i] + o; }
+        function getNoteOnFretboard(stringIdx, fret) { return midiToNote(noteToMidi(TUNING[stringIdx]) + fret); }
+        
+        function findAllPositionsForMidi(midi) {
+            const positions = [];
+            const minFret = parseInt(fretMinInput.value), maxFret = parseInt(fretMaxInput.value);
+            for (let s = 0; s < 6; s++) {
+                const fret = midi - noteToMidi(TUNING[s]);
+                if (fret >= minFret && fret <= maxFret) positions.push({ string: s, fret: fret });
+            }
+            return positions;
+        }
+        
+        // *** NEW HELPER FUNCTION: Finds ALL positions for a note NAME (e.g., 'E'), ignoring octave ***
+        function findAllPositionsForNoteName(noteName) {
+            const positions = [];
+            const pitch = noteName.replace(/[0-9]/g, ''); // 'E' from 'E4'
+            const minFret = parseInt(fretMinInput.value);
+            const maxFret = parseInt(fretMaxInput.value);
+
+            for (let s = 0; s < 6; s++) {
+                for (let f = 0; f <= NUM_FRETS; f++) {
+                    if (f >= minFret && f <= maxFret) {
+                        const currentNoteOnFret = getNoteOnFretboard(s, f);
+                        if (currentNoteOnFret.replace(/[0-9]/g, '') === pitch) {
+                            positions.push({ string: s, fret: f, noteName: currentNoteOnFret });
+                        }
+                    }
+                }
+            }
+            return positions;
+        }
+
+        function calculateHarmony(originalNoteData, previousHarmonyNote) {
+            const { noteName } = originalNoteData;
+            const root = keySelect.value, scaleType = scaleSelect.value, interval = parseInt(intervalSelect.value), harmonyType = harmonyTypeSelect.value;
+            const originalMidi = noteToMidi(noteName);
+            let harmonyMidi;
+            if (harmonyType === 'diatonic') {
+                const scale = SCALES[scaleType].intervals.map(i => (NOTES.indexOf(root) + i) % 12);
+                const originalPitchMidi = originalMidi % 12;
+                let baseDegreeMidi = -1;
+                for (let i = 0, tempMidi = originalPitchMidi; i < 12; i++, tempMidi = (tempMidi - 1 + 12) % 12) { if (scale.includes(tempMidi)) { baseDegreeMidi = tempMidi; break; } }
+                if (baseDegreeMidi === -1) return null;
+                let scaleDegreeIndex = scale.indexOf(baseDegreeMidi);
+                let harmonyDegreeIndex = (scaleDegreeIndex + interval - (interval > 0 ? 1 : -1) + scale.length * 10) % scale.length;
+                const harmonyBasePitchMidi = scale[harmonyDegreeIndex];
+                let octaveShift = 0;
+                if (interval > 0 && harmonyBasePitchMidi < baseDegreeMidi) octaveShift = 12;
+                else if (interval < 0 && harmonyBasePitchMidi > baseDegreeMidi) octaveShift = -12;
+                const degreeDiff = interval > 0 ? interval - 1 : interval + 1;
+                octaveShift += Math.floor((scaleDegreeIndex + degreeDiff) / scale.length) * 12;
+                harmonyMidi = originalMidi + (harmonyBasePitchMidi - baseDegreeMidi) + octaveShift;
+            } else {
+                const semitoneMap = { 1:0, 2:2, 3:4, 4:5, 5:7, 6:9, 7:11 };
+                const semitoneInterval = semitoneMap[Math.abs(interval)] * Math.sign(interval);
+                harmonyMidi = originalMidi + semitoneInterval;
+            }
+
+            const allPositionsForMidi = findAllPositionsForMidi(harmonyMidi);
+            if(allPositionsForMidi.length === 0) return null;
+            
+            let bestInitialPosition = allPositionsForMidi[0];
+            if (previousHarmonyNote) {
+                 let minScore = Infinity;
+                 allPositionsForMidi.forEach(pos => {
+                     const stringDist = Math.abs(pos.string - previousHarmonyNote.string);
+                     const fretDist = Math.abs(pos.fret - previousHarmonyNote.fret);
+                     const score = (stringDist * 4) + fretDist;
+                     if (score < minScore) { minScore = score; bestInitialPosition = pos; }
+                 });
+            } else {
+                 bestInitialPosition = allPositionsForMidi.reduce((best, current) => Math.abs(current.fret - 9) < Math.abs(best.fret - 9) ? current : best, allPositionsForMidi[0]);
+            }
+
+            return { ...bestInitialPosition, noteName: midiToNote(harmonyMidi) };
+        }
+
+        function updateUI() {
+            document.querySelectorAll('.note-marker').forEach(el => el.remove());
+            userPhrase.forEach((pair, index) => {
+                drawNote(originalBoard, pair.original, 'original-note', index);
+                if (pair.harmony) drawNote(harmonyBoard, pair.harmony, 'harmony-note', index);
+            });
+            updatePlayButtons();
+        }
+
+        function drawNote(grid, noteData, className, index) {
+            const fretCell = grid.querySelector(`[data-string='${noteData.string}'][data-fret='${noteData.fret}']`);
+            if (fretCell) {
+                const marker = Object.assign(document.createElement('div'), { className: `note-marker ${className}`, textContent: noteData.noteName.slice(0, -1) });
+                marker.dataset.index = index;
+                fretCell.appendChild(marker);
+            }
+        }
+        
+        function updatePlayButtons() {
+            const hasNotes = userPhrase.length > 0;
+            ['play-original', 'play-harmony', 'play-both', 'show-tab', 'undo', 'clear-all'].forEach(id => document.getElementById(id).disabled = !hasNotes);
+        }
+        
+        function handleFretClick(e) {
+            const cell = e.target.closest('.fret-cell');
+            if (!cell) return;
+            Tone.start();
+            const string = parseInt(cell.dataset.string), fret = parseInt(cell.dataset.fret);
+            if (fret < parseInt(fretMinInput.value) || fret > parseInt(fretMaxInput.value)) { alert(`フレットは ${fretMinInput.value}～${fretMaxInput.value} の範囲で選択してください。`); return; }
+            const originalNoteData = { string, fret, noteName: getNoteOnFretboard(string, fret) };
+            const previousHarmonyNote = userPhrase.length > 0 ? userPhrase[userPhrase.length - 1].harmony : null;
+            const harmonyNoteData = calculateHarmony(originalNoteData, previousHarmonyNote);
+            userPhrase.push({ original: originalNoteData, harmony: harmonyNoteData });
+            updateUI();
+            if (synth) {
+                synth.triggerAttackRelease(originalNoteData.noteName, '8n');
+                if (harmonyNoteData) synth.triggerAttackRelease(harmonyNoteData.noteName, '8n', '+0.01');
+            }
+        }
+
+        // *** THIS IS THE FINAL, CORRECTED IMPLEMENTATION ***
+        function handleHarmonyNoteClick(e) {
+            const marker = e.target.closest('.note-marker.harmony-note');
+            if (!marker) return;
+
+            const index = parseInt(marker.dataset.index);
+            const pair = userPhrase[index];
+            if (!pair || !pair.harmony) return;
+            
+            // Find ALL positions for the same NOTE NAME, regardless of octave
+            const allPossiblePositions = findAllPositionsForNoteName(pair.harmony.noteName);
+            
+            if (allPossiblePositions.length <= 1) return;
+
+            // Sort for a predictable cycle: by string, then by fret
+            allPossiblePositions.sort((a, b) => a.string - b.string || a.fret - b.fret);
+
+            // Find current position's index in the comprehensive list
+            const currentPositionIndex = allPossiblePositions.findIndex(p => 
+                p.string === pair.harmony.string && p.fret === pair.harmony.fret
+            );
+            
+            // Cycle to the next available position
+            const nextPositionIndex = (currentPositionIndex + 1) % allPossiblePositions.length;
+            const newPosition = allPossiblePositions[nextPositionIndex];
+
+            // Update the harmony data in the phrase
+            userPhrase[index].harmony = newPosition;
+
+            updateUI();
+            if (synth) synth.triggerAttackRelease(newPosition.noteName, '8n');
+        }
+        
+        function playSequence(part) { 
+            if (!synth || userPhrase.length === 0) return; Tone.start();
+            const events = [];
+            userPhrase.forEach((pair, i) => {
+                if (part === 'original' || part === 'both') events.push({time: `0:${i}`, note: pair.original.noteName});
+                if ((part === 'harmony' || part === 'both') && pair.harmony) events.push({time: `0:${i}`, note: pair.harmony.noteName});
+            });
+            Tone.Transport.cancel();
+            const partPlayer = new Tone.Part((time, value) => { synth.triggerAttackRelease(value.note, '8n', time); }, events).start(0);
+            Tone.Transport.bpm.value = 120;
+            Tone.Transport.start();
+            setTimeout(() => { Tone.Transport.stop(); partPlayer.dispose(); }, (60 / 120) * 1000 * (userPhrase.length + 1));
+        }
+
+        function showTab() {
+            let tabString = `Key: ${keySelect.value} ${scaleSelect.options[scaleSelect.selectedIndex].text}\n`;
+            tabString += `Harmony: ${intervalSelect.options[intervalSelect.selectedIndex].text} (${harmonyTypeSelect.value})\n\n`;
+            tabString += "元フレーズ (弦-フレット):\n" + userPhrase.map(p => `${p.original.string + 1}-${p.original.fret}`).join(' ') + "\n\n";
+            tabString += "ハモリ　 (弦-フレット):\n" + userPhrase.map(p => p.harmony ? `${p.harmony.string + 1}-${p.harmony.fret}` : `---`).join(' ');
+            document.getElementById('tab-content').textContent = tabString;
+            document.getElementById('tab-output-container').style.display = 'flex';
+        }
+
+        function addEventListeners() {
+            originalBoard.addEventListener('click', handleFretClick);
+            harmonyBoard.addEventListener('click', handleHarmonyNoteClick); // Finalized handler
+            document.getElementById('play-original').addEventListener('click', () => playSequence('original'));
+            document.getElementById('play-harmony').addEventListener('click', () => playSequence('harmony'));
+            document.getElementById('play-both').addEventListener('click', () => playSequence('both'));
+            document.getElementById('show-tab').addEventListener('click', showTab);
+            document.getElementById('undo').addEventListener('click', () => { userPhrase.pop(); updateUI(); });
+            document.getElementById('clear-all').addEventListener('click', () => { userPhrase = []; updateUI(); });
+            showNotesToggle.addEventListener('change', (e) => { document.querySelectorAll('.fretboard-grid').forEach(grid => grid.classList.toggle('show-notes-active', e.target.checked)); });
+        }
+        
+        init();
+    });
+    </script>
+</body>
+</html>
